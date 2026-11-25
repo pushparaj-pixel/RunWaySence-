@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RunwaySense - Intelligent Runway Safety Predictor</title>
+<style>
+:root{
+  --paper:#E6EAEC; --panel:#F4F6F7; --ink:#16222B; --soft:#55646E; --line:#C3CCD1;
+  --asphalt:#353C43; --paint:#F5F3EC; --signal:#F4B81D; --ok:#23764A; --warn:#E5811C; --bad:#B3322A; --grass:#8FA394;
+  --cond:"Bahnschrift","DIN Alternate","DIN Condensed","Roboto Condensed","sans-serif-condensed","Arial Narrow","Helvetica Neue",sans-serif;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --paper:#12181D; --panel:#1B242A; --ink:#E4EAED; --soft:#93A1AB; --line:#2E3A42; --asphalt:#2B333A; --paint:#F2F0E8; --ok:#2C8A57; --bad:#D4463B; }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.app{max-width:1080px;margin:0 auto;padding:0 16px 48px}
+.mast{display:flex;align-items:center;gap:14px;padding:18px 0 8px}
+.mark{background:var(--asphalt);color:var(--paint);font:700 32px/1 var(--cond);font-stretch:75%;padding:9px 12px 7px;border-radius:4px;box-shadow:inset 0 -5px 0 -2px var(--paint);min-width:54px;text-align:center}
+h1{margin:0;font:700 30px/1.05 var(--cond);font-stretch:75%;letter-spacing:-.01em}
+.sub{margin:2px 0 0;color:var(--soft);font-size:14px}
+.grid{display:grid;gap:28px;grid-template-areas:"res" "inp"}
+.results{grid-area:res;min-width:0}
+.inputs{grid-area:inp;min-width:0}
+@media (min-width:900px){.grid{grid-template-columns:360px 1fr;grid-template-areas:"inp res";gap:44px;align-items:start}}
+
+.sign-wrap{position:sticky;top:0;z-index:5;background:var(--paper);padding:8px 0 6px}
+.sign{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 14px;padding:10px 14px 9px;border-radius:6px;font-family:var(--cond);font-stretch:75%;transition:background .2s,color .2s}
+.sign-word{font-size:26px;font-weight:700;line-height:1.1}
+.sign-p{font-size:19px;font-variant-numeric:tabular-nums}
+.sign[data-l="0"]{background:var(--ok);color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.55)}
+.sign[data-l="1"]{background:var(--signal);color:#16222B;box-shadow:inset 0 0 0 2px rgba(0,0,0,.7)}
+.sign[data-l="2"]{background:var(--warn);color:#16222B;box-shadow:inset 0 0 0 2px rgba(0,0,0,.7)}
+.sign[data-l="3"]{background:var(--bad);color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.55)}
+.why{margin:6px 0 14px;font-size:15.5px;max-width:62ch}
+
+.strip{margin:0}
+#hero{display:block;width:100%;height:auto;background:var(--panel);border-radius:6px}
+#hero text{font:600 14px var(--cond);fill:var(--soft)}
+#hero .over{fill:var(--bad)}
+.dens{transform-origin:0 128px}
+.dens.intro{animation:rise .9s cubic-bezier(.2,.7,.2,1) both}
+@keyframes rise{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 0 0;font-size:12.5px;color:var(--soft)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.lg{display:inline-block;width:16px;height:10px}
+.lg.tri{background:var(--signal);clip-path:polygon(0 0,100% 0,50% 100%)}
+.lg.solid{height:0;border-top:2px solid var(--ink)}
+.lg.dash{height:0;border-top:2px dashed var(--ink)}
+.lg.area{background:var(--bad);opacity:.75}
+.legend-note{width:100%}
+
+.nums{display:grid;grid-template-columns:repeat(2,1fr);gap:0 20px;margin:18px 0 0}
+.nums>div{padding:10px 0 9px;border-top:1px solid var(--line)}
+.nums dt{font-size:12.5px;color:var(--soft)}
+.nums dd{margin:2px 0 0;font:700 25px/1.1 var(--cond);font-stretch:75%;font-variant-numeric:tabular-nums}
+.nums dd small{font-size:14px;font-weight:600;color:var(--soft);margin-left:3px}
+.nums .hint{display:block;margin-top:2px;font:400 12px/1.3 system-ui,sans-serif;color:var(--soft)}
+.pos{color:var(--ok)}.neg{color:var(--bad)}
+@media (min-width:640px){.nums{grid-template-columns:repeat(3,1fr)}}
+
+h2{margin:28px 0 6px;font:700 20px/1.2 var(--cond);font-stretch:75%}
+.drv{display:grid;grid-template-columns:1fr auto;gap:3px 12px;align-items:baseline;margin:10px 0}
+.drv b{font:700 18px var(--cond);font-stretch:75%;font-variant-numeric:tabular-nums}
+.drv .bar{grid-column:1/-1;height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.drv .bar i{display:block;height:100%;background:var(--warn);transition:width .25s}
+.soft{color:var(--soft)}
+#actions{margin:6px 0 0;padding-left:20px;max-width:62ch}
+#actions li{margin:6px 0}
+.note{margin:28px 0 0;font-size:12.5px;color:var(--soft);max-width:62ch}
+
+.scen{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-bottom:14px}
+.scen>span{font-size:13px;color:var(--soft);width:100%}
+button{font:inherit}
+.pill{padding:8px 13px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);font-size:14px;cursor:pointer;min-height:40px}
+.pill:hover{border-color:var(--ink)}
+.btn{padding:9px 16px;border:0;border-radius:6px;background:var(--ink);color:var(--paper);font-weight:600;cursor:pointer;min-height:42px}
+:focus-visible{outline:3px solid var(--signal);outline-offset:2px}
+
+details{border-top:1px solid var(--line)}
+summary{cursor:pointer;list-style:none;padding:13px 0;font:700 19px var(--cond);font-stretch:75%;display:flex;justify-content:space-between;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";font-size:22px;color:var(--soft)}
+details[open] summary::after{content:"\2212"}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 0 18px}
+.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--soft)}
+.f.wide{grid-column:1/-1}
+.f output{color:var(--ink);font-weight:600}
+input[type=number],select,textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:9px 10px;min-height:42px;width:100%}
+textarea{resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:14px}
+input[type=range]{width:100%;min-height:34px;accent-color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;grid-column:1/-1}
+.chips label{position:relative}
+.chips input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.chips span{display:block;padding:8px 13px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:14px;color:var(--ink)}
+.chips input:checked+span{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.chips input:focus-visible+span{outline:3px solid var(--signal);outline-offset:2px}
+#metarMsg{margin:8px 0 0;font-size:13px;color:var(--soft)}
+.report{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:16px 0 0}
+#reportMsg{font-size:13px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+<div class="app">
+  <header class="mast">
+    <div class="mark" id="rwyMark">07</div>
+    <div>
+      <h1>RunwaySense</h1>
+      <p class="sub">Runway safety predictor</p>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="results" aria-label="Results">
+      <div class="sign-wrap"><div class="sign" id="sign" data-l="0" role="status" aria-live="polite"><span class="sign-word" id="signWord"></span><span class="sign-p" id="signP"></span></div></div>
+      <p class="why" id="why"></p>
+      <figure class="strip">
+        <svg id="hero" viewBox="0 0 600 204" role="img" aria-label="Runway with predicted stopping distribution"></svg>
+        <figcaption class="legend">
+          <span><i class="lg tri"></i>Touchdown</span>
+          <span><i class="lg solid"></i>Median stop</span>
+          <span><i class="lg dash"></i>95% stop</span>
+          <span><i class="lg area"></i>Overrun zone</span>
+          <span class="legend-note">The curve shows where 4,000 simulated landings came to rest.</span>
+        </figcaption>
+      </figure>
+      <div class="report"><button class="btn" id="reportBtn" type="button">Download PDF report</button><span id="reportMsg" class="soft" role="status"></span></div>
+      <dl class="nums" id="nums"></dl>
+      <h2>What is costing you runway</h2>
+      <div id="drivers"></div>
+      <h2>What to do</h2>
+      <ul id="actions"></ul>
+      <p class="note">Educational model for study and projects. It uses simplified physics and a Monte Carlo spread, so it is not for flight planning or any operational decision.</p>
+    </section>
+
+    <section class="inputs" aria-label="Inputs">
+      <div class="scen">
+        <span>Load a scenario</span>
+        <button class="pill" data-s="clear">Clear day</button>
+        <button class="pill" data-s="monsoon">Monsoon crosswind</button>
+        <button class="pill" data-s="puddle">Tailwind on standing water</button>
+        <button class="pill" data-s="hot">Hot and high</button>
+      </div>
+
+      <details open><summary>Aircraft</summary>
+        <div class="fields">
+          <label class="f wide"><span>Type</span><select id="ac"></select></label>
+          <label class="f wide"><span>Landing weight: <output id="wOut"></output></span><input id="w" type="range"></label>
+        </div>
+      </details>
+
+      <details open><summary>Runway</summary>
+        <div class="fields">
+          <label class="f"><span>Landing distance available (m)</span><input id="lda" type="number" inputmode="numeric" min="300" max="6000" step="50"></label>
+          <label class="f"><span>Runway heading (°)</span><input id="rwy" type="number" inputmode="numeric" min="1" max="360" step="1"></label>
+          <label class="f"><span>Elevation (ft)</span><input id="elev" type="number" inputmode="numeric" min="-1000" max="12000" step="50"></label>
+          <label class="f"><span>Slope: <output id="slopeOut"></output></span><input id="slope" type="range" min="-2" max="2" step="0.1"></label>
+        </div>
+      </details>
+
+      <details open><summary>Weather</summary>
+        <div class="fields">
+          <label class="f wide"><span>Paste a METAR to fill the weather</span><textarea id="metar" rows="2" placeholder="VABB 211530Z 24012G22KT 3000 +RA SCT015 BKN060 27/25 Q1004" spellcheck="false"></textarea></label>
+          <div class="wide"><button class="btn" id="metarBtn" type="button">Apply METAR</button><p id="metarMsg"></p></div>
+          <label class="f"><span>Wind from (°)</span><input id="wdir" type="number" inputmode="numeric" min="0" max="360" step="10"></label>
+          <label class="f"><span>Wind speed (kt)</span><input id="wspd" type="number" inputmode="numeric" min="0" max="80" step="1"></label>
+          <label class="f"><span>Gust (kt, 0 for none)</span><input id="gust" type="number" inputmode="numeric" min="0" max="100" step="1"></label>
+          <label class="f"><span>Temperature (°C)</span><input id="temp" type="number" inputmode="numeric" min="-50" max="55" step="1"></label>
+          <label class="f"><span>QNH (hPa)</span><input id="qnh" type="number" inputmode="numeric" min="950" max="1060" step="1"></label>
+        </div>
+      </details>
+
+      <details open><summary>Runway surface</summary>
+        <div class="fields"><div class="chips" id="chips" role="radiogroup" aria-label="Runway surface"></div></div>
+      </details>
+
+      <details><summary>Pilot technique</summary>
+        <div class="fields">
+          <label class="f wide"><span>Touchdown beyond the aiming point: <output id="longOut"></output></span><input id="longOff" type="range" min="0" max="800" step="25"></label>
+          <label class="f wide"><span>Extra approach speed: <output id="extraOut"></output></span><input id="extra" type="range" min="0" max="15" step="1"></label>
+        </div>
+      </details>
+    </section>
+  </main>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const f0=n=>Math.round(n).toLocaleString('en-US');
+const KT=0.514444, G=9.81;
+
+const AC={
+  a320:{n:'Airbus A320-200',S:122.6,CL:2.6,mlw:64500,minW:46000,step:250,tire:200,xw:33,tw:15,mu:.28,aero:.6,td:300,free:2},
+  b738:{n:'Boeing 737-800',S:124.6,CL:2.45,mlw:65317,minW:48000,step:250,tire:205,xw:33,tw:15,mu:.28,aero:.6,td:300,free:2},
+  atr72:{n:'ATR 72-600',S:61,CL:2.8,mlw:22350,minW:15500,step:50,tire:120,xw:35,tw:10,mu:.26,aero:.5,td:260,free:2},
+  c208:{n:'Cessna 208B Caravan',S:25.96,CL:2.1,mlw:3856,minW:2500,step:25,tire:55,xw:20,tw:10,mu:.22,aero:.5,td:200,free:1.5}
+};
+const SURF={
+  dry:{n:'Dry',r:1,sd:.10,xw:1},
+  damp:{n:'Damp',r:.85,sd:.14,xw:.95},
+  wet:{n:'Wet',r:.62,sd:.20,xw:.8},
+  water:{n:'Standing water',r:.40,sd:.25,xw:.6,hp:true},
+  slush:{n:'Slush',r:.34,sd:.30,xw:.55,hp:true},
+  snow:{n:'Snow',r:.42,sd:.30,xw:.6},
+  ice:{n:'Ice',r:.15,sd:.35,xw:.3}
+};
+const SCEN={
+  clear:{ac:'a320',w:56000,lda:2800,rwy:70,elev:50,slope:0,wdir:60,wspd:8,gust:0,temp:30,qnh:1010,cond:'dry',longOff:0,extra:0},
+  monsoon:{ac:'b738',w:58000,lda:2300,rwy:70,elev:50,slope:0,wdir:120,wspd:20,gust:32,temp:27,qnh:1004,cond:'wet',longOff:100,extra:3},
+  puddle:{ac:'a320',w:62000,lda:2000,rwy:70,elev:50,slope:0,wdir:250,wspd:9,gust:0,temp:26,qnh:1008,cond:'water',longOff:150,extra:0},
+  hot:{ac:'b738',w:63000,lda:1800,rwy:70,elev:5300,slope:0,wdir:70,wspd:0,gust:0,temp:36,qnh:1012,cond:'dry',longOff:0,extra:0}
+};
+
+/* ---------- physics ---------- */
+function atmos(elev,qnh,T){
+  const pa=elev+(1013.25-qnh)*27;
+  const p=101325*Math.pow(1-6.8756e-6*pa,5.2559);
+  const rho=p/(287.05*(T+273.15));
+  const isa=15-1.98*pa/1000;
+  return {pa,rho,sigma:rho/1.225,da:pa+120*(T-isa)};
+}
+function windc(i){
+  const th=(i.wdir-i.rwy)*Math.PI/180;
+  const g=Math.max(i.gust,i.wspd);
+  return {th,hw:i.wspd*Math.cos(th),xw:i.wspd*Math.sin(th),xwG:Math.abs(g*Math.sin(th))};
+}
+function stopDist(p){
+  let v=p.vg, d=p.delay*v;
+  const sl=G*p.slope/100;
+  if(p.vp && v>p.vp){
+    const ah=Math.max(.5,G*.05+p.aero+sl);
+    d+=(v*v-p.vp*p.vp)/(2*ah); v=p.vp;
+  }
+  const a=Math.max(.5,G*p.mu+p.aero+sl);
+  return d+v*v/(2*a);
+}
+function det(i){
+  const a=AC[i.ac], sf=SURF[i.cond], at=atmos(i.elev,i.qnh,i.temp), wc=windc(i);
+  const vs=Math.sqrt(2*i.w*G/(at.rho*a.S*a.CL));
+  const sg=Math.sqrt(at.sigma);
+  const vrefT=1.23*vs;
+  const vrefI=vrefT/KT*sg;
+  const gx=Math.max(0,Math.max(i.gust,i.wspd)-i.wspd);
+  const addAuto=clamp(.5*Math.max(0,wc.hw)+gx,5,20);
+  const add=addAuto+i.extra;
+  const vappI=vrefI+add;
+  const vappT=vappI*KT/sg;
+  const vtd=vappT*.96;
+  const vg=Math.max(0,vtd-wc.hw*KT);
+  const xtd=a.td+15*i.extra+5*(addAuto-5)+i.longOff;
+  const vp=9*Math.sqrt(a.tire)*KT;
+  const hydro=sf.hp===true;
+  const roll=stopDist({vg,mu:a.mu*sf.r,aero:a.aero,delay:a.free,slope:i.slope,vp:hydro?vp:0});
+  return {at,wc,vrefI,vappI,add,vtd,vg,xtd,roll,stop:xtd+roll,vp,hydro,gx};
+}
+function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const randn=r=>Math.sqrt(-2*Math.log(1-r()))*Math.cos(2*Math.PI*r());
+function mc(i,d){
+  const N=4000, r=rng(7), out=new Float32Array(N);
+  const a=AC[i.ac], sf=SURF[i.cond], cosT=Math.cos(d.wc.th), sg=Math.sqrt(d.at.sigma);
+  let over=0;
+  for(let k=0;k<N;k++){
+    const x=Math.max(150,d.xtd+randn(r)*70-Math.log(1-r())*50);
+    const dv=randn(r)*3*KT/sg;
+    const hwS=(d.wc.hw+r()*d.gx*cosT+randn(r)*1.5)*KT;
+    const vg=Math.max(0,d.vtd+dv-hwS);
+    const mf=clamp(Math.exp(randn(r)*sf.sd),.4,1.5);
+    const delay=Math.max(.8,a.free+randn(r)*.8);
+    const s=x+stopDist({vg,mu:a.mu*sf.r*mf,aero:a.aero,delay,slope:i.slope,vp:d.hydro?d.vp:0});
+    out[k]=s; if(s>i.lda) over++;
+  }
+  out.sort();
+  return {out,N,p50:out[N>>1],p95:out[Math.floor(N*.95)],p99:out[Math.floor(N*.99)],p:over/N};
+}
+function drivers(i,d){
+  const out=[]; const b=d.stop;
+  const t=(label,patch)=>{const dl=b-det({...i,...patch}).stop; if(dl>25) out.push({label,dl});};
+  if(i.cond!=='dry') t(SURF[i.cond].n+' surface',{cond:'dry'});
+  if(d.wc.hw<0) t('Tailwind of '+f0(-d.wc.hw)+' kt',{wspd:0,gust:0});
+  if(d.at.da>2000) t('Density altitude of '+f0(d.at.da)+' ft',{elev:0,temp:15,qnh:1013.25});
+  if(i.slope<0) t('Downhill slope',{slope:0});
+  if(i.longOff>0) t('Touchdown '+f0(i.longOff)+' m past the aiming point',{longOff:0});
+  if(i.extra>0) t('Extra approach speed of '+i.extra+' kt',{extra:0});
+  return out.sort((x,y)=>y.dl-x.dl);
+}
+function maxW(i){
+  const a=AC[i.ac], ok=w=>det({...i,w}).stop*1.15<=i.lda;
+  if(ok(a.mlw)) return a.mlw;
+  if(!ok(a.minW)) return null;
+  let lo=a.minW, hi=a.mlw;
+  for(let k=0;k<24;k++){const mid=(lo+hi)/2; ok(mid)?lo=mid:hi=mid;}
+  return lo;
+}
+const fmtP=p=>p<.001?'under 0.1%':p<.1?(p*100).toFixed(1)+'%':Math.round(p*100)+'%';
+const des=h=>String(Math.round(h/10)||36).padStart(2,'0');
+
+function verdict(i,d,m){
+  const a=AC[i.ac], sf=SURF[i.cond], wc=d.wc, R=[];
+  const xl=a.xw*sf.xw;
+  if(wc.xwG>xl) R.push({l:3,t:`Gust crosswind of ${f0(wc.xwG)} kt is above the ${f0(xl)} kt limit for a ${sf.n.toLowerCase()} runway.`});
+  else if(wc.xwG>.8*xl) R.push({l:1,t:`Gust crosswind of ${f0(wc.xwG)} kt is close to the ${f0(xl)} kt limit for a ${sf.n.toLowerCase()} runway.`});
+  if(-wc.hw>a.tw) R.push({l:3,t:`Tailwind of ${f0(-wc.hw)} kt is above the ${a.tw} kt limit.`});
+  else if(-wc.hw>=5) R.push({l:1,t:`Tailwind of ${f0(-wc.hw)} kt adds a lot of ground speed.`});
+  const vgk=d.vg/KT, vpk=d.vp/KT;
+  if(d.hydro && vgk>vpk) R.push({l:2,t:`Touchdown ground speed of ${f0(vgk)} kt is above the ${f0(vpk)} kt hydroplaning speed on ${sf.n.toLowerCase()}.`});
+  else if(i.cond==='wet' && vgk>vpk) R.push({l:1,t:`Hydroplaning is possible on a worn wet runway above ${f0(vpk)} kt.`});
+  if(m.p>.05) R.push({l:3,t:`${fmtP(m.p)} of simulated landings ran off the end of the runway.`});
+  else if(m.p>.01) R.push({l:2,t:`${fmtP(m.p)} of simulated landings ran off the end of the runway.`});
+  else if(m.p>=.001) R.push({l:1,t:`${fmtP(m.p)} of simulated landings ran off the end of the runway.`});
+  if(d.stop*1.15>i.lda) R.push({l:1,t:`Landing distance with a 15% margin is ${f0(d.stop*1.15)} m, longer than the ${f0(i.lda)} m available.`});
+  if(!R.length) R.push({l:0,t:`Even the 99th-percentile landing stops ${f0(i.lda-m.p99)} m before the runway end.`});
+  R.sort((x,y)=>y.l-x.l);
+  return {lvl:R[0].l,R};
+}
+function analyze(i){
+  const d=det(i), m=mc(i,d), v=verdict(i,d,m);
+  const dry=det({...i,cond:'dry'}).stop;
+  const disp=dry/.6*(i.cond==='dry'?1:1.15);
+  const mw=(i.lda<d.stop*1.15)?maxW(i):undefined;
+  return {d,m,v,disp,mw,drv:drivers(i,d)};
+}
+//--UI--
+const S={...SCEN.monsoon};
+Object.assign(S,{ac:'a320',w:60000,lda:1800,wdir:90,wspd:10,gust:0,temp:28,qnh:1008,cond:'wet',longOff:0,extra:0});
+const NUM=['w','lda','rwy','elev','slope','wdir','wspd','gust','temp','qnh','longOff','extra'];
+let intro=true;
+let LAST=null;
+
+function buildStatic(){
+  $('ac').innerHTML=Object.entries(AC).map(([k,a])=>`<option value="${k}">${a.n}</option>`).join('');
+  $('chips').innerHTML=Object.entries(SURF).map(([k,s])=>`<label><input type="radio" name="cond" value="${k}"><span>${s.n}</span></label>`).join('');
+}
+function setSliders(){
+  const a=AC[S.ac], w=$('w');
+  w.min=a.minW; w.max=a.mlw; w.step=a.step;
+  S.w=clamp(S.w,a.minW,a.mlw);
+}
+function writeUI(){
+  setSliders();
+  $('ac').value=S.ac;
+  NUM.forEach(id=>{$(id).value=S[id];});
+  document.querySelectorAll('input[name=cond]').forEach(r=>{r.checked=r.value===S.cond;});
+}
+function readUI(){
+  NUM.forEach(id=>{const v=parseFloat($(id).value); if(!isNaN(v)) S[id]=v;});
+  S.rwy=((Math.round(S.rwy)-1)%360+360)%360+1;
+  S.lda=Math.max(300,S.lda);
+  S.wspd=Math.max(0,S.wspd); S.gust=Math.max(0,S.gust);
+}
+function opp(h){return des(((h+179)%360)+1+0)}
+
+function drawHero(i,r){
+  const W=600,padL=16,padR=16,base=128,ry=132,rh=34;
+  const {d,m}=r;
+  const D=Math.max(i.lda*1.12,m.p99*1.06);
+  const iw=W-padL-padR, sx=x=>padL+x/D*iw, xe=sx(i.lda);
+  const B=60, cnt=new Array(B).fill(0);
+  for(const s of m.out) cnt[Math.min(B-1,Math.floor(s/D*B))]++;
+  const sm=cnt.map((c,k)=>(c*2+(cnt[k-1]||0)+(cnt[k+1]||0))/4);
+  const mx=Math.max(...sm,1);
+  let path=`M${sx(0).toFixed(1)},${base}`;
+  sm.forEach((c,k)=>{path+=` L${sx((k+.5)/B*D).toFixed(1)},${(base-c/mx*92).toFixed(1)}`;});
+  path+=` L${sx(D).toFixed(1)},${base}Z`;
+  const cls=intro?'dens intro':'dens';
+  let s=`<defs>
+    <clipPath id="cIn"><rect x="0" y="0" width="${xe.toFixed(1)}" height="204"/></clipPath>
+    <clipPath id="cOut"><rect x="${xe.toFixed(1)}" y="0" width="${(W-xe).toFixed(1)}" height="204"/></clipPath>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="var(--grass)" fill-opacity=".35"/><line x1="0" y1="0" x2="0" y2="8" stroke="var(--bad)" stroke-opacity=".55" stroke-width="2"/></pattern>
+  </defs>`;
+  s+=`<g class="${cls}"><path d="${path}" clip-path="url(#cIn)" fill="var(--ink)" fill-opacity=".24"/><path d="${path}" clip-path="url(#cOut)" fill="var(--bad)" fill-opacity=".8"/></g>`;
+  s+=`<rect x="${xe.toFixed(1)}" y="${ry}" width="${(sx(D)-xe).toFixed(1)}" height="${rh}" fill="url(#hatch)"/>`;
+  s+=`<rect x="${sx(0).toFixed(1)}" y="${ry}" width="${(xe-sx(0)).toFixed(1)}" height="${rh}" fill="var(--asphalt)"/>`;
+  for(let k=0;k<8;k++) s+=`<rect x="${(sx(0)+5+k*4.5).toFixed(1)}" y="${ry+7}" width="2.2" height="${rh-14}" fill="var(--paint)"/>`;
+  s+=`<line x1="${(sx(0)+50).toFixed(1)}" x2="${(xe-8).toFixed(1)}" y1="${ry+rh/2}" y2="${ry+rh/2}" stroke="var(--paint)" stroke-width="2" stroke-dasharray="12 10"/>`;
+  if(sx(300)<xe-20){const bw=Math.max(8,60/D*iw);
+    s+=`<rect x="${sx(300).toFixed(1)}" y="${ry+5}" width="${bw.toFixed(1)}" height="7" fill="var(--paint)"/><rect x="${sx(300).toFixed(1)}" y="${ry+rh-12}" width="${bw.toFixed(1)}" height="7" fill="var(--paint)"/>`;}
+  s+=`<rect x="${(xe-2).toFixed(1)}" y="${ry-8}" width="3" height="${rh+16}" fill="var(--bad)"/>`;
+  const xm=sx(m.p50), x95=sx(m.p95), xt=sx(d.xtd);
+  s+=`<line x1="${xm.toFixed(1)}" x2="${xm.toFixed(1)}" y1="26" y2="${ry+rh}" stroke="var(--ink)" stroke-width="2"/>`;
+  s+=`<line x1="${x95.toFixed(1)}" x2="${x95.toFixed(1)}" y1="26" y2="${ry+rh}" stroke="var(--ink)" stroke-width="2" stroke-dasharray="5 4"/>`;
+  s+=`<polygon points="${(xt-7).toFixed(1)},${ry-13} ${(xt+7).toFixed(1)},${ry-13} ${xt.toFixed(1)},${ry-1}" fill="var(--signal)" stroke="var(--ink)" stroke-width="1.5" stroke-linejoin="round"/>`;
+  if(sx(D)-xe>56) s+=`<text class="over" x="${((xe+sx(D))/2).toFixed(1)}" y="${ry+rh/2+5}" text-anchor="middle">Overrun</text>`;
+  const steps=[250,500,1000,2000], step=steps.find(t=>D/t<=6)||2000;
+  for(let v=0;v<=D;v+=step){
+    const x=sx(v);
+    s+=`<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${ry+rh+3}" y2="${ry+rh+8}" stroke="var(--soft)"/>`;
+    s+=`<text x="${x.toFixed(1)}" y="${ry+rh+24}" text-anchor="${v===0?'start':'middle'}">${f0(v)}${v+step>D?' m':''}</text>`;
+  }
+  $('hero').innerHTML=s;
+  $('hero').setAttribute('aria-label',`Runway ${f0(i.lda)} metres. Median stop ${f0(m.p50)} metres, 95 percent stop ${f0(m.p95)} metres, overrun chance ${fmtP(m.p)}.`);
+  intro=false;
+}
+
+function render(){
+  const i=S, a=AC[i.ac], r=analyze(i), {d,m,v}=r;
+  $('rwyMark').textContent=des(i.rwy);
+  $('wOut').textContent=`${(i.w/1000).toFixed(1)} t (${Math.round(i.w/a.mlw*100)}% of max)`;
+  $('slopeOut').textContent=i.slope>0?`+${i.slope.toFixed(1)}% uphill`:i.slope<0?`${i.slope.toFixed(1)}% downhill`:'level';
+  $('longOut').textContent=`+${f0(i.longOff)} m`;
+  $('extraOut').textContent=`+${i.extra} kt`;
+
+  const words=['Runway adequate','Thin margin','High overrun risk','Not safe to land'];
+  $('sign').dataset.l=v.lvl;
+  $('signWord').textContent=words[v.lvl];
+  $('signP').textContent=`${fmtP(m.p)} overrun chance`;
+  $('why').textContent=v.R[0].t;
+
+  drawHero(i,r);
+
+  const wc=d.wc, side=wc.xw>0?'right':'left';
+  const hwTxt=wc.hw>=0?`${f0(wc.hw)}`:`${f0(-wc.hw)}`;
+  const margin=i.lda-m.p95;
+  const items=[
+    ['Overrun chance',fmtP(m.p),'','of 4,000 simulated landings'],
+    ['Median stop',f0(m.p50),'m','from the threshold'],
+    ['95% stop',f0(m.p95),'m','95 of 100 landings stop sooner'],
+    ['Runway available',f0(i.lda),'m',''],
+    ['Margin at 95%',(margin>=0?'+':'')+f0(margin),'m',margin>=0?'runway left over':'beyond the runway end',margin>=0?'pos':'neg'],
+    ['Dispatch distance',f0(r.disp),'m','dry ÷ 0.6, plus 15% if not dry'],
+    ['Approach speed',f0(d.vappI),'kt',`indicated, Vref +${f0(d.add)}`],
+    ['Touchdown ground speed',f0(d.vg/KT),'kt',''],
+    ['Hydroplaning speed',f0(d.vp/KT),'kt',d.hydro?(d.vg>d.vp?'you land above it':'you land below it'):'matters on standing water'],
+    [wc.hw>=0?'Headwind':'Tailwind',hwTxt,'kt',''],
+    ['Crosswind',f0(Math.abs(wc.xw)),'kt',`from the ${side}${wc.xwG>Math.abs(wc.xw)+.5?`, gusts ${f0(wc.xwG)} kt`:''}`],
+    ['Density altitude',f0(d.at.da),'ft','']
+  ];
+  $('nums').innerHTML=items.map(([k,val,u,h,c])=>`<div><dt>${k}</dt><dd class="${c||''}">${val}${u?`<small>${u}</small>`:''}</dd>${h?`<span class="hint">${h}</span>`:''}</div>`).join('');
+
+  const mxd=Math.max(...r.drv.map(x=>x.dl),1);
+  $('drivers').innerHTML=r.drv.length?r.drv.map(x=>`<div class="drv"><span>${x.label}</span><b>+${f0(x.dl)} m</b><div class="bar"><i style="width:${(x.dl/mxd*100).toFixed(0)}%"></i></div></div>`).join(''):'<p class="soft">No single factor adds more than 25 m.</p>';
+
+  const act=[];
+  if(-wc.hw>=5) act.push(`Ask for the reciprocal runway, ${opp(i.rwy)}, to turn a ${f0(-wc.hw)} kt tailwind into a headwind.`);
+  if(v.R.some(x=>x.t.includes('crosswind')&&x.l>=1)) act.push('Ask for a runway with less crosswind, or wait for the gusts to ease.');
+  if(r.mw===null) act.push('Even at minimum landing weight this runway fails the 15% margin check.');
+  else if(r.mw!==undefined) act.push(`Landing at ${(r.mw/1000).toFixed(1)} t or lighter (${f0(i.w-r.mw)} kg less) restores a 15% margin.`);
+  if(i.cond!=='dry' && v.lvl>=1) act.push('Get a current braking-action report before you commit. Friction is the biggest unknown here.');
+  if(d.hydro) act.push(`Touch down early and brake early. Each second of delay costs about ${f0(d.vg)} m of runway.`);
+  if(v.lvl>=2) act.push('Plan a diversion or a longer runway as the alternative.');
+  if(!act.length) act.push('No action needed. Check again if wind, surface or weight changes.');
+  $('actions').innerHTML=act.slice(0,5).map(t=>`<li>${t}</li>`).join('');
+  LAST={i:{...i},r,act:act.slice(0,5)};
+}
+
+function update(){readUI();render();}
+
+function parseMetar(){
+  const t=' '+$('metar').value.toUpperCase()+' ', got=[];
+  let m=t.match(/\s(VRB|\d{3})(\d{2,3})(?:G(\d{2,3}))?KT\s/);
+  if(m){S.wdir=m[1]==='VRB'?S.rwy:+m[1];S.wspd=+m[2];S.gust=m[3]?+m[3]:0;got.push(`wind ${m[1]}° ${+m[2]} kt${m[3]?' gusting '+ +m[3]:''}`);}
+  m=t.match(/\s(M?\d{2})\/(M?\d{2})\s/);
+  if(m){const p=x=>x[0]==='M'?-x.slice(1):+x;S.temp=p(m[1]);got.push(`${S.temp} °C`);}
+  m=t.match(/\sQ(\d{4})\s/);
+  if(m){S.qnh=+m[1];got.push(`QNH ${S.qnh}`);}
+  else{m=t.match(/\sA(\d{4})\s/);if(m){S.qnh=Math.round(+m[1]/100*33.8639);got.push(`QNH ${S.qnh}`);}}
+  if(!got.length){$('metarMsg').textContent='No wind, temperature or pressure found. Paste a standard METAR.';return;}
+  let c='dry';
+  if(/\s(FZRA|FZDZ|PL)\s/.test(t)) c='ice';
+  else if(/\s[-+]?(SH)?(SN|SG)\s/.test(t)) c='snow';
+  else if(/\s\+(TS|SH)?RA\s/.test(t)) c='water';
+  else if(/\s(TS|SH)?RA\s/.test(t)) c='wet';
+  else if(/\s[-+]?(DZ|RA)\s/.test(t)) c='damp';
+  S.cond=c;
+  $('metarMsg').textContent=`Applied: ${got.join(', ')}, surface set to ${SURF[c].n.toLowerCase()}.`;
+  writeUI();render();
+}
+
+
+/* ---------- PDF report ---------- */
+const PAL={'--paper':'#FFFFFF','--panel':'#F4F6F7','--ink':'#16222B','--soft':'#55646E','--line':'#C3CCD1','--asphalt':'#353C43','--paint':'#F5F3EC','--signal':'#F4B81D','--ok':'#23764A','--warn':'#E5811C','--bad':'#B3322A','--grass':'#8FA394'};
+function heroPng(){
+  return new Promise((res,rej)=>{
+    const inner=$('hero').innerHTML.replace(/var\((--[a-z]+)\)/g,(_,k)=>PAL[k]||'#000000');
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="612" viewBox="0 0 600 204"><style>text{font:600 14px Helvetica,Arial,sans-serif;fill:#55646E}text.over{fill:#B3322A}</style><rect width="600" height="204" fill="#F4F6F7"/>${inner}</svg>`;
+    const url=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml;charset=utf-8'}));
+    const img=new Image();
+    img.onload=()=>{const c=document.createElement('canvas');c.width=1800;c.height=612;c.getContext('2d').drawImage(img,0,0,1800,612);URL.revokeObjectURL(url);res(c.toDataURL('image/png'));};
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('chart'));};
+    img.src=url;
+  });
+}
+async function makeReport(){
+  const msg=$('reportMsg');
+  if(!window.jspdf){msg.textContent='The PDF library did not load. Check your internet connection and reload.';return;}
+  if(!LAST) return;
+  msg.textContent='Building report...';
+  try{
+    const {i,r,act}=LAST, {d,m,v}=r, a=AC[i.ac], sf=SURF[i.cond], wc=d.wc;
+    const doc=new window.jspdf.jsPDF({unit:'mm',format:'a4'});
+    const M=16,PW=210,PH=297,CW=PW-2*M;
+    const INK=[22,34,43],SOFT=[85,100,110],LINE=[195,204,209];
+    let y=0;
+    const ensure=h=>{if(y+h>PH-16){doc.addPage();y=M;}};
+    const head=t=>{ensure(16);y+=7;doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(...INK);doc.text(t,M,y);y+=2.5;doc.setDrawColor(...LINE);doc.line(M,y,PW-M,y);y+=6;};
+    const grid=rows=>{
+      const cw=CW/2;
+      for(let k=0;k<rows.length;k+=2){
+        ensure(12);
+        [0,1].forEach(c=>{
+          const row=rows[k+c]; if(!row) return;
+          const x=M+c*cw;
+          doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(...SOFT);doc.text(row[0],x,y);
+          doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...INK);doc.text(String(row[1]),x,y+5.2);
+        });
+        y+=12;
+      }
+    };
+    const para=(t,size=10,bullet=false)=>{
+      doc.setFont('helvetica','normal');doc.setFontSize(size);doc.setTextColor(...INK);
+      const lines=doc.splitTextToSize((bullet?'- ':'')+t,CW-(bullet?4:0));
+      ensure(lines.length*size*0.45+2);
+      doc.text(lines,M+(bullet?2:0),y);
+      y+=lines.length*size*0.45+2;
+    };
+
+    /* header band */
+    const now=new Date();
+    doc.setFillColor(...INK);doc.rect(0,0,PW,27,'F');
+    doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(21);doc.text('RunwaySense',M,15);
+    doc.setFont('helvetica','normal');doc.setFontSize(9);doc.text('Runway safety report',M,21.5);
+    doc.text(now.toLocaleString('en-IN'),PW-M,15,{align:'right'});
+    doc.text(`Runway ${des(i.rwy)}/${opp(i.rwy)}, ${a.n}`,PW-M,21.5,{align:'right'});
+
+    /* verdict */
+    const VC=[[35,118,74,255,255,255],[244,184,29,22,34,43],[229,129,28,22,34,43],[179,50,42,255,255,255]][v.lvl];
+    const words=['Runway adequate','Thin margin','High overrun risk','Not safe to land'];
+    y=35;
+    doc.setFillColor(VC[0],VC[1],VC[2]);doc.roundedRect(M,y,CW,14,2,2,'F');
+    doc.setTextColor(VC[3],VC[4],VC[5]);doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text(words[v.lvl],M+5,y+9.2);
+    doc.setFontSize(11);doc.text(`${fmtP(m.p)} overrun chance`,PW-M-5,y+9,{align:'right'});
+    y+=21;
+    para(v.R[0].t,10.5);
+    v.R.slice(1,4).forEach(x=>para(x.t,9.5,true));
+    y+=2;
+
+    /* chart */
+    try{
+      const png=await heroPng();
+      const h=CW*204/600;
+      ensure(h+8);
+      doc.addImage(png,'PNG',M,y,CW,h);
+      y+=h+4;
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...SOFT);
+      doc.text('Curve: where 4,000 simulated landings stopped. Solid line = median stop, dashed = 95% stop, red bar = runway end.',M,y);
+      y+=3;
+    }catch(e){}
+
+    /* inputs */
+    head('Inputs');
+    grid([
+      ['Aircraft',a.n],
+      ['Landing weight',`${(i.w/1000).toFixed(1)} t (${Math.round(i.w/a.mlw*100)}% of max)`],
+      ['Runway',`${des(i.rwy)}/${opp(i.rwy)}, heading ${f0(i.rwy)}°`],
+      ['Landing distance available',`${f0(i.lda)} m`],
+      ['Elevation',`${f0(i.elev)} ft`],
+      ['Slope',i.slope>0?`+${i.slope.toFixed(1)}% uphill`:i.slope<0?`${i.slope.toFixed(1)}% downhill`:'Level'],
+      ['Wind',`${f0(i.wdir)}° at ${f0(i.wspd)} kt${i.gust>0?', gusting '+f0(i.gust)+' kt':''}`],
+      ['Temperature and QNH',`${f0(i.temp)} °C, ${f0(i.qnh)} hPa`],
+      ['Runway surface',sf.n],
+      ['Touchdown past aiming point',`+${f0(i.longOff)} m`],
+      ['Extra approach speed',`+${i.extra} kt`],
+      ['Max landing weight',`${(a.mlw/1000).toFixed(1)} t`]
+    ]);
+
+    /* results */
+    const margin=i.lda-m.p95, xl=a.xw*sf.xw;
+    head('Predicted results');
+    grid([
+      ['Overrun chance',fmtP(m.p)],
+      ['Margin at 95% stop',`${margin>=0?'+':''}${f0(margin)} m`],
+      ['Median stop from threshold',`${f0(m.p50)} m`],
+      ['95% stop',`${f0(m.p95)} m`],
+      ['99% stop',`${f0(m.p99)} m`],
+      ['Landing distance, no scatter',`${f0(d.stop)} m`],
+      ['With 15% safety margin',`${f0(d.stop*1.15)} m`],
+      ['Dispatch distance (dry / 0.6, +15% if not dry)',`${f0(r.disp)} m`],
+      ['Reference speed (Vref, IAS)',`${f0(d.vrefI)} kt`],
+      ['Approach speed (IAS)',`${f0(d.vappI)} kt (Vref +${f0(d.add)})`],
+      ['Touchdown ground speed',`${f0(d.vg/KT)} kt`],
+      ['Hydroplaning speed',`${f0(d.vp/KT)} kt`],
+      [wc.hw>=0?'Headwind':'Tailwind',`${f0(Math.abs(wc.hw))} kt`],
+      ['Crosswind (steady / gust / limit)',`${f0(Math.abs(wc.xw))} / ${f0(wc.xwG)} / ${f0(xl)} kt`],
+      ['Density altitude',`${f0(d.at.da)} ft`],
+      ['Pressure altitude',`${f0(d.at.pa)} ft`]
+    ]);
+
+    /* drivers */
+    head('What is costing you runway');
+    if(r.drv.length) r.drv.forEach(x=>para(`${x.label}: +${f0(x.dl)} m`,10,true));
+    else para('No single factor adds more than 25 m.',10);
+
+    /* actions */
+    head('What to do');
+    act.forEach(t=>para(t,10,true));
+
+    /* method */
+    head('Method');
+    para('Approach speed comes from Vs = sqrt(2W / (rho S CLmax)) at the actual air density, Vref = 1.23 Vs, plus a wind and gust additive. Stopping distance adds touchdown point, 2 s of free roll, then braking with friction scaled by surface, aerodynamic drag and reverse thrust, and slope. Standing water and slush apply a hydroplaning phase above 9 x sqrt(tyre pressure in psi) kt. The overrun chance comes from 4,000 Monte Carlo landings with scatter in touchdown point, speed, wind, friction and brake delay.',9);
+
+    /* footer on every page */
+    const n=doc.getNumberOfPages();
+    for(let p=1;p<=n;p++){
+      doc.setPage(p);
+      doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...SOFT);
+      doc.text('RunwaySense. Educational model, not for flight planning or operational decisions.',M,PH-8);
+      doc.text(`Page ${p} of ${n}`,PW-M,PH-8,{align:'right'});
+    }
+    const pad=x=>String(x).padStart(2,'0');
+    const stamp=`${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+    doc.save(`RunwaySense-report-RWY${des(i.rwy)}-${stamp}.pdf`);
+    msg.textContent='Report downloaded.';
+  }catch(e){
+    msg.textContent='Could not build the report. Try again.';
+  }
+}
+
+buildStatic();
+writeUI();
+render();
+document.querySelectorAll('input[type=number],input[type=range]').forEach(el=>el.addEventListener('input',update));
+$('ac').addEventListener('change',()=>{S.ac=$('ac').value;S.w=Math.round(AC[S.ac].mlw*.9/AC[S.ac].step)*AC[S.ac].step;writeUI();update();});
+document.querySelectorAll('input[name=cond]').forEach(r=>r.addEventListener('change',()=>{S.cond=r.value;render();}));
+document.querySelectorAll('.scen button').forEach(b=>b.addEventListener('click',()=>{Object.assign(S,SCEN[b.dataset.s]);writeUI();render();window.scrollTo({top:0,behavior:'smooth'});}));
+$('metarBtn').addEventListener('click',parseMetar);
+$('reportBtn').addEventListener('click',makeReport);
+</script>
+</body>
+</html>
